@@ -1,0 +1,27 @@
+experiment:
+  name: job-normalization-benchmark
+  sample_size: 200
+  sampling_method: random
+  random_seed: 42
+
+models:
+  extractor_a: "${EXTRACTOR_A_MODEL}"
+  extractor_b: "${EXTRACTOR_B_MODEL}"
+  evaluator: "${EVALUATOR_MODEL}"
+
+processing:
+  mode: batch_api
+  requests_per_file: 50
+  max_retries: 3
+  completion_window: 24h
+  reasoning_effort: null
+  poll_interval_seconds: 30
+
+evaluation:
+  blind_comparison: true
+  swap_positions: true
+  requests_per_file: 25
+  review_sample_size: 25
+
+storage:
+  base_dir: ./experiments

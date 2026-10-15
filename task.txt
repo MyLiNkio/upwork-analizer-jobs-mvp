@@ -1,0 +1,314 @@
+# Task: Upwork Job Extraction & Normalization — Model Benchmark MVP
+
+## Goal
+
+Розробити Python-застосунок для тестування та порівняння двох OpenAI-моделей на задачі екстракції й нормалізації Upwork-вакансій.
+
+Моделі для порівняння:
+- GPT 5.6 Luna — extraction model A.
+- GPT 6 Luna — extraction model B.
+- GPT 5.6 Sol — evaluation model.
+
+**Model IDs повинні задаватися в конфігурації.** Перед запуском перевірити їхню доступність через OpenAI API, не підставляти неперевірені назви. Використовувати точні IDs доступних моделей.
+
+Застосунок використовує PostgreSQL виключно для читання початкових вакансій. Усі проміжні та фінальні результати, включно зі станом виконання, зберігати локально у файлах.
+
+## Stage 1. Project Configuration
+
+Реалізувати конфігурацію в `config.yaml`.
+
+Приклад:
+
+```yaml
+experiment:
+  name: job-normalization-benchmark
+  sample_size: 200
+  sampling_method: stratified_random
+  random_seed: 42
+
+models:
+  extractor_a: "<verified_luna_5_6_id>"
+  extractor_b: "gpt-6-luna"
+  evaluator: "gpt-5.6-sol"
+
+processing:
+  mode: batch_api
+  requests_per_file: 50
+  max_retries: 3
+  reasoning_effort: configurable
+
+evaluation:
+  blind_comparison: true
+  swap_positions: true
+  requests_per_file: 25
+
+storage:
+  base_dir: ./experiments
+```
+
+Забезпечити конфігурування API-параметрів, розмірів пакетів, стратегій вибірки, моделей, промптів та параметрів оцінювання.
+
+API-ключі й дані підключення до PostgreSQL читати з environment variables.
+
+## Stage 2. Dataset Preparation
+
+Реалізувати завантаження 100–200 джобів із PostgreSQL, кількість визначається конфігурацією.
+
+Вимоги:
+
+- Використати наявні Python-бібліотеки для роботи з БД, якщо вони доступні.
+- Отримувати `job_id`, `title`, `description`.
+- Не передавати існуючі skills, taxonomies та AI-класифікації в extraction models.
+- Забезпечити відтворювану вибірку з фіксованим seed.
+- Бажано включити короткі, довгі, комплексні та неоднозначні вакансії.
+- Перевірити наявність title/description та виключити точні дублікати Job ID.
+- Зберегти незмінну вибірку у `dataset/jobs.jsonl`.
+- Зберегти manifest із переліком Job IDs, хешами текстів та параметрами вибірки.
+
+**Після створення dataset подальші етапи не повинні звертатися до PostgreSQL.**
+
+## Stage 3. Extraction & Normalization
+
+Створити один спільний prompt і JSON Schema для обох моделей.
+
+Мета: виділити реальні функціональні задачі, відкинувши нерелевантні фрагменти про найм, вимоги до фрілансера, компанію та умови співпраці.
+
+Вихідна структура для кожної вакансії:
+
+```json
+{
+  "job_id": "123",
+  "tasks": [
+    {
+      "original_fragments": [
+        "Exact quotation from job description"
+      ],
+      "normalized_task": "Normalized task description",
+      "operations": [],
+      "inputs": [],
+      "outputs": [],
+      "technologies": [],
+      "integrations": [],
+      "business_goal": null
+    }
+  ],
+  "extraction_notes": []
+}
+```
+
+Правила:
+- Дослівні фрагменти не можна перефразовувати.
+- Нормалізація не повинна втрачати функції, технології, інтеграції чи обмеження.
+- Не додавати фактів, яких немає в оригіналі.
+- Не узагальнювати конкретні технології до абстрактних назв без необхідності.
+- Якщо вакансія містить кілька самостійних задач — витягувати їх окремо.
+- Якщо певна інформація відсутня — використовувати `null` або порожній список.
+- Зберігати мову оригінальних фрагментів.
+- Застосувати Structured Outputs із JSON Schema.
+
+Зберегти ідентичні налаштування обох моделей, наскільки це підтримують їхні API.
+
+## Stage 4. Batch Processing
+
+Реалізувати OpenAI Batch API.
+
+Для кожної моделі:
+1. Сформувати JSONL-файли запитів з однакових Job IDs.
+2. Розбити запити на пакети відповідно до конфігурації.
+3. Надіслати пакети.
+4. Зберегти API batch IDs.
+5. Відстежувати стани виконання.
+6. Завантажити raw responses та errors.
+7. Зіставити результати з Job IDs через `custom_id`, незалежно від порядку відповідей.
+8. Перевірити JSON Schema та повноту результатів.
+
+Повторно відправляти лише відсутні або помилкові запити.
+
+Обробка моделі A та моделі B повинна запускатися незалежно.
+
+## Stage 5. Comparison Preparation
+
+Сформувати пари результатів:
+
+`job_id → original_job + model_a_output + model_b_output`
+
+Перевірити:
+- Чи обидві моделі успішно обробили джобу.
+- Чи відповідають результати JSON Schema.
+- Чи існують дослівні фрагменти в оригінальному тексті.
+- Чи не містяться дублікати tasks.
+- Чи не загублені Job IDs.
+
+Для AI-порівняння випадково призначати результатам позначення A/B, не показуючи судді справжні назви моделей.
+
+Зберігати відповідність позначень локально, щоб після оцінювання відновити справжню модель.
+
+## Stage 6. AI Evaluation
+
+Використати GPT 5.6 Sol як незалежного AI-суддю.
+
+Оцінювати кожну пару результатів відносно оригінальної вакансії.
+
+Критерії:
+1. Functional completeness.
+2. Hallucination / unsupported information.
+3. Technology and integration preservation.
+4. Verbatim extraction accuracy.
+5. Normalization quality.
+6. Multi-task extraction accuracy.
+
+Для кожного критерію повертати оцінки обох кандидатів, опис розбіжностей та підтвердження конкретними фрагментами вихідного тексту.
+
+Застосувати weighted score відповідно до зафіксованих критеріїв оцінювання.
+
+Повернути:
+- Candidate A score.
+- Candidate B score.
+- Winner: A / B / tie.
+- Critical errors.
+- Missing information.
+- Unsupported additions.
+- Explanation.
+
+Порівняння також виконувати через Batch API.
+
+**Для контролю позиційного упередження:** запустити оцінювання із переставленими місцями A/B, як мінімум для контрольної вибірки. Розбіжності позначати як `needs_review`.
+
+Додатково передбачити експорт 20–30 випадків для ручної перевірки.
+
+## Stage 7. Reporting
+
+Після завершення оцінювання сформувати:
+
+- `comparison.csv` — порівняння по кожній джобі.
+- `summary.json` — агреговані метрики.
+- `report.md` — аналітичний звіт.
+- `review_cases.csv` — критичні та неоднозначні випадки.
+
+Звіт повинен містити:
+
+- Загальну кількість джобів.
+- Кількість успішних і помилкових обробок.
+- Win / Loss / Tie для кожної моделі.
+- Середні та медіанні оцінки за критеріями.
+- Кількість критичних втрат інформації та вигаданих фактів.
+- Приклади найважливіших відмінностей.
+- Статистичну невизначеність результату.
+- Використані токени та API-витрати, якщо ці дані доступні.
+- Фінальну рекомендацію щодо моделі для подальшої нормалізації джобів.
+
+Не приховувати невизначеність. Якщо різниця між моделями незначна або оцінювання суперечливе, зазначити, що переконливого переможця немає.
+
+## Stage 8. Checkpoints & Resume
+
+Кожен запуск створює окремий `run_id` та каталог.
+
+Структура:
+
+```text
+experiments/
+  run_001/
+    config.snapshot.yaml
+    manifest.json
+    dataset/
+      jobs.jsonl
+    prompts/
+      extraction.txt
+      evaluation.txt
+    extraction/
+      model_a/
+        requests/
+        responses/
+        results.jsonl
+        state.json
+      model_b/
+        requests/
+        responses/
+        results.jsonl
+        state.json
+    evaluation/
+      requests/
+      responses/
+      results.jsonl
+      state.json
+    reports/
+      comparison.csv
+      summary.json
+      report.md
+      review_cases.csv
+```
+
+Для кожного API batch зберігати:
+- Local batch ID.
+- OpenAI batch ID.
+- Перелік Job IDs / custom IDs.
+- Статус.
+- Час створення та оновлення.
+- Шляхи до файлів запитів і результатів.
+- Кількість успішних та помилкових запитів.
+
+Після перезапуску програма повинна визначати незавершені операції та відновлювати виконання.
+
+Не створювати новий OpenAI batch, якщо для тих самих запитів уже існує незавершений або успішний batch.
+
+Використати атомарний запис state-файлів і перевірку цілісності результатів.
+
+Для зміни конфігурації або промптів створювати нову версію експерименту. Не змінювати налаштування вже запущеного run.
+
+## Stage 9. CLI & Execution Modes
+
+Реалізувати CLI на Python, наприклад через Typer.
+
+Команди:
+
+```bash
+python -m benchmark prepare
+python -m benchmark extract --model all
+python -m benchmark extract --model a
+python -m benchmark extract --model b
+python -m benchmark evaluate
+python -m benchmark report
+python -m benchmark status
+python -m benchmark resume
+python -m benchmark run-all
+```
+
+Усі команди після створення експерименту повинні приймати `--run-id`.
+
+Передбачити режими:
+
+- `dry-run` — підготовка файлів без API-викликів.
+- `submit` — відправлення нових batch-запитів.
+- `sync` — перевірка стану та завантаження результатів.
+- `resume` — продовження незавершеної роботи.
+- `retry-failed` — повторення тільки помилкових запитів.
+- `force-new-run` — новий експеримент, без перезапису старих результатів.
+
+Заборонити запуск Evaluation до отримання повних або явно зафіксованих часткових результатів обох моделей.
+
+## Stage 10. Tests & Acceptance Criteria
+
+Перед основним запуском перевірити роботу на 3–5 джобах.
+
+Перевірити:
+- Підключення до БД.
+- Стабільне формування dataset.
+- Доступність моделей.
+- Створення batch-файлів.
+- JSON validation.
+- Відновлення після переривання.
+- Повторний запуск без дублювання API-запитів.
+- Коректне зіставлення моделей і Job IDs.
+- Формування порівняльного звіту.
+
+MVP вважається готовим, якщо можна:
+
+1. Отримати з PostgreSQL 200 джобів.
+2. Обробити однакову вибірку двома моделями.
+3. Зберегти всі результати локально.
+4. Перервати й відновити кожен етап.
+5. Незалежно запустити оцінювання.
+6. Отримати порівняльний звіт.
+7. Повторити експеримент з іншими моделями, промптами чи розміром вибірки без зміни Python-коду.
+
+**Implementation principle:** Keep the solution simple. No UI, MCP server, additional database, distributed queue or unnecessary infrastructure. Use Python, OpenAI API, existing PostgreSQL access libraries, JSONL, YAML and local filesystem.

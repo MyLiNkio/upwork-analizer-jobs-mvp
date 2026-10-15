@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "upwork-analizer-jobs-mvp"
+version = "0.1.0"
+description = "Benchmark extraction and normalization models on Upwork jobs"
+requires-python = ">=3.11"
+dependencies = ["PyYAML>=6.0", "psycopg[binary]>=3.2", "openai>=1.109.0"]
+
+[project.scripts]
+benchmark = "benchmark.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["benchmark*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"

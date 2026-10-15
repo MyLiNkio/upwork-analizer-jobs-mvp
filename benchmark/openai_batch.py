@@ -65,6 +65,24 @@ def sync(state: dict[str, Any], output_path: Path, error_path: Path, poll_second
     return state
 
 
+def usage_from_output(path: Path) -> dict[str, int]:
+    """Sum provider-reported token usage from a Responses Batch output file."""
+    totals = {"input_tokens": 0, "output_tokens": 0, "total_tokens": 0}
+    if not path.exists(): return totals
+    for line in path.read_text(encoding="utf-8").splitlines():
+        if not line: continue
+        try:
+            body = json.loads(line).get("response", {}).get("body", {})
+            usage = body.get("usage", {})
+            totals["input_tokens"] += int(usage.get("input_tokens", usage.get("prompt_tokens", 0)) or 0)
+            totals["output_tokens"] += int(usage.get("output_tokens", usage.get("completion_tokens", 0)) or 0)
+            totals["total_tokens"] += int(usage.get("total_tokens", 0) or 0)
+        except (ValueError, TypeError, json.JSONDecodeError):
+            continue
+    if not totals["total_tokens"]: totals["total_tokens"] = totals["input_tokens"] + totals["output_tokens"]
+    return totals
+
+
 def parse_output(path: Path) -> tuple[dict[str, Any], dict[str, str]]:
     results: dict[str, Any] = {}; errors: dict[str, str] = {}
     if not path.exists(): return results, errors

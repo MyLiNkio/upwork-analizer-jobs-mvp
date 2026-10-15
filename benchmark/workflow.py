@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from .dataset import load_jobs, read_dataset, write_dataset
-from .openai_batch import extraction_body, evaluation_body, parse_output, submit, sync, verify_models, write_requests
+from .openai_batch import extraction_body, evaluation_body, parse_output, submit, sync, usage_from_output, verify_models, write_requests
 from .schema import BATCH_EXTRACTION_SCHEMA, EVALUATION_SCHEMA, validate_extraction_response
 
 
@@ -51,6 +51,9 @@ def extract(config: dict[str, Any], run_id: str, variant: str = "all", mode: str
         if mode in {"sync", "resume"} and state.get("batch_id"):
             state = sync(state, root / "responses/results.jsonl", root / "responses/errors.jsonl", int(config["processing"].get("poll_interval_seconds", 30))); _state(state_file, state)
             responses, errors = parse_output(root / "responses/results.jsonl"); valid: dict[str, Any] = {}; validation: dict[str, Any] = {"errors": errors, "requests": {}}
+            usage = usage_from_output(root / "responses/results.jsonl")
+            usage.update({"jobs": len(jobs), "average_input_tokens_per_job": usage["input_tokens"] / len(jobs) if jobs else 0, "average_output_tokens_per_job": usage["output_tokens"] / len(jobs) if jobs else 0, "average_total_tokens_per_job": usage["total_tokens"] / len(jobs) if jobs else 0})
+            (root / "token_usage.json").write_text(json.dumps(usage, indent=2), encoding="utf-8")
             for custom_id, response in responses.items():
                 group = next((g for cid, g in zip(mapping, groups) if cid == custom_id), [])
                 indexed, problems = validate_extraction_response(response, group)
@@ -77,4 +80,8 @@ def evaluate(config: dict[str, Any], run_id: str, mode: str = "submit") -> None:
     if mode == "submit" and "batch_id" not in state: state.update(submit(request_file, {"run_id": run_id, "stage": "evaluation"}, config["processing"].get("completion_window", "24h"))); _state(state_file, state)
     if mode in {"sync", "resume"} and state.get("batch_id"):
         state = sync(state, root / "responses/results.jsonl", root / "responses/errors.jsonl", int(config["processing"].get("poll_interval_seconds", 30))); _state(state_file, state)
-        results, errors = parse_output(root / "responses/results.jsonl"); (root / "results.jsonl").write_text("\n".join(json.dumps(r, ensure_ascii=False) for r in results.values()) + ("\n" if results else ""), encoding="utf-8"); (root / "validation.json").write_text(json.dumps({"errors": errors}, indent=2), encoding="utf-8")
+        results, errors = parse_output(root / "responses/results.jsonl")
+        usage = usage_from_output(root / "responses/results.jsonl")
+        usage.update({"jobs": len(complete), "average_input_tokens_per_job": usage["input_tokens"] / len(complete) if complete else 0, "average_output_tokens_per_job": usage["output_tokens"] / len(complete) if complete else 0, "average_total_tokens_per_job": usage["total_tokens"] / len(complete) if complete else 0})
+        (root / "token_usage.json").write_text(json.dumps(usage, indent=2), encoding="utf-8")
+        (root / "results.jsonl").write_text("\n".join(json.dumps(r, ensure_ascii=False) for r in results.values()) + ("\n" if results else ""), encoding="utf-8"); (root / "validation.json").write_text(json.dumps({"errors": errors}, indent=2), encoding="utf-8")

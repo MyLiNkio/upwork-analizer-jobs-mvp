@@ -15,7 +15,10 @@ def _variant_stats(root: Path, variant: str) -> dict[str, Any]:
     state = json.loads((extraction / "state.json").read_text()) if (extraction / "state.json").exists() else {}
     mapping = json.loads((extraction / "request_mapping.json").read_text()) if (extraction / "request_mapping.json").exists() else {}
     expected = sum(len(x.get("job_ids", [])) for x in mapping.values())
-    return {"variant": variant, "jobs": len(rows), "expected_jobs": expected, "job_completion_rate": len(rows) / expected if expected else None, "requests": len(mapping), "status": state.get("status", "not_started"), "jobs_per_request": state.get("jobs_per_request")}
+    usage = json.loads((extraction / "token_usage.json").read_text()) if (extraction / "token_usage.json").exists() else {"input_tokens": 0, "output_tokens": 0, "total_tokens": 0}
+    usage["average_input_tokens_per_job"] = usage.get("average_input_tokens_per_job", 0)
+    usage["average_output_tokens_per_job"] = usage.get("average_output_tokens_per_job", 0)
+    return {"variant": variant, "jobs": len(rows), "expected_jobs": expected, "job_completion_rate": len(rows) / expected if expected else None, "requests": len(mapping), "status": state.get("status", "not_started"), "jobs_per_request": state.get("jobs_per_request"), "input_tokens": usage.get("input_tokens", 0), "output_tokens": usage.get("output_tokens", 0), "total_tokens": usage.get("total_tokens", 0), "average_input_tokens_per_job": usage["average_input_tokens_per_job"], "average_output_tokens_per_job": usage["average_output_tokens_per_job"]}
 
 
 def report(config: dict[str, Any], run_id: str) -> None:
@@ -32,8 +35,9 @@ def report(config: dict[str, Any], run_id: str) -> None:
     with (reports / "review_cases.csv").open("w", newline="", encoding="utf-8") as output:
         fields = ["job_id", "winner", "critical_errors", "explanation"]; writer = csv.DictWriter(output, fieldnames=fields); writer.writeheader()
         for row in review: writer.writerow({field: json.dumps(row.get(field), ensure_ascii=False) if isinstance(row.get(field), list) else row.get(field) for field in fields})
-    lines = ["# Benchmark report", "", "## A. Overall Ranking", "", "| Variant | Jobs | Completion | Requests | Status |", "|---|---:|---:|---:|---|"]
-    lines += [f"| {s['variant']} | {s['jobs']} | {s['job_completion_rate'] if s['job_completion_rate'] is not None else 'n/a'} | {s['requests']} | {s['status']} |" for s in stats]
+    lines = ["# Benchmark report", "", "## A. Overall Ranking", "", "| Variant | Jobs | Completion | Requests | Input tokens | Output tokens | Input/job | Output/job | Status |", "|---|---:|---:|---:|---:|---:|---:|---:|---|"]
+    lines += [f"| {s['variant']} | {s['jobs']} | {s['job_completion_rate'] if s['job_completion_rate'] is not None else 'n/a'} | {s['requests']} | {s['input_tokens']} | {s['output_tokens']} | {s['average_input_tokens_per_job']:.1f} | {s['average_output_tokens_per_job']:.1f} | {s['status']} |" for s in stats]
+    lines += ["", "## Token usage", "", "Token counts come from the provider's response `usage` fields. The totals include all extraction requests; averages use the configured dataset size. Details are also available in each variant's `token_usage.json`."]
     lines += ["", "## B. Single vs Multi Impact", "", "Comparison is computed only from jobs with valid outputs for both variants; missing or failed jobs are not silently replaced."]
     for a, b in (("v1", "v2"), ("v3", "v4")):
         sa, sb = next((x for x in stats if x["variant"] == a), {}), next((x for x in stats if x["variant"] == b), {})

@@ -12,7 +12,7 @@ def main() -> None:
     parser.add_argument("command", choices=["prepare", "extract", "evaluate", "report", "status", "resume", "run-all"])
     parser.add_argument("--run-id"); parser.add_argument("--variant", choices=["v1", "v2", "v3", "v4", "all"], default="all")
     parser.add_argument("--model", choices=["a", "b", "all"], help="legacy alias; use --variant")
-    parser.add_argument("--mode", choices=["dry-run", "submit", "sync", "resume", "retry-failed"], default="submit"); parser.add_argument("--config", default="config.yaml")
+    parser.add_argument("--mode", choices=["dry-run", "submit", "sync", "resume", "retry-failed", "revalidate"], default="submit"); parser.add_argument("--config", default="config.yaml")
     args = parser.parse_args(); config = load_config(args.config)
     if args.command == "prepare": print(prepare(config, args.config)); return
     if args.command == "run-all" and not args.run_id: args.run_id = prepare(config, args.config); print(f"Prepared {args.run_id}")

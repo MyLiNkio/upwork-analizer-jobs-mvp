@@ -15,13 +15,13 @@ def load_jobs(sample_size: int, seed: int, config: dict[str, Any]) -> list[dict[
     with psycopg.connect(**db_environment(config), autocommit=False) as connection:
         with connection.cursor() as cursor:
             cursor.execute("SET TRANSACTION READ ONLY")
-            cursor.execute("SELECT id, title, description FROM jobs WHERE title IS NOT NULL AND description IS NOT NULL")
+            cursor.execute("SELECT id, description FROM jobs WHERE description IS NOT NULL")
             rows = cursor.fetchall()
     unique: dict[str, dict[str, str]] = {}
-    for job_id, title, description in rows:
+    for job_id, description in rows:
         key = str(job_id)
-        if key not in unique and str(title).strip() and str(description).strip():
-            unique[key] = {"job_id": key, "title": str(title), "description": str(description)}
+        if key not in unique and str(description).strip():
+            unique[key] = {"job_id": key, "description": str(description)}
     jobs = list(unique.values())
     if sample_size < 1: raise ValueError("sample_size must be positive")
     random.Random(seed).shuffle(jobs)
@@ -29,7 +29,7 @@ def load_jobs(sample_size: int, seed: int, config: dict[str, Any]) -> list[dict[
 
 
 def _sha(job: dict[str, str]) -> str:
-    return hashlib.sha256((job["title"] + "\0" + job["description"]).encode()).hexdigest()
+    return hashlib.sha256(job["description"].encode()).hexdigest()
 
 
 def write_dataset(run_dir: Path, jobs: list[dict[str, str]], config: dict[str, Any]) -> None:

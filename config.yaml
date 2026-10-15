@@ -7,7 +7,7 @@ database:
 
 experiment:
   name: job-normalization-benchmark
-  sample_size: 1
+  sample_size: 100
   sampling_method: random
   random_seed: 42
 

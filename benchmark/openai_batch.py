@@ -1,15 +1,17 @@
 from __future__ import annotations
 
 import json
+import os
 import time
 from pathlib import Path
 from typing import Any
 
-from .schema import BATCH_EXTRACTION_SCHEMA, EVALUATION_SCHEMA
+from .schema import BATCH_EXTRACTION_SCHEMA, build_evaluation_schema
 
 _PROMPT_PATH = Path(__file__).resolve().parent.parent / "prompts" / "system_prompt.txt"
 SYSTEM_PROMPT = _PROMPT_PATH.read_text(encoding="utf-8")
-EVALUATION_PROMPT = """You are an independent blind evaluator. Compare four candidate outputs only against the original Upwork job. Score each candidate independently for functional completeness (30%), absence of hallucinations (20%), technology and integration preservation (20%), verbatim extraction accuracy (15%), normalization quality (10%), and multi-task extraction quality (5%). Identify missing requirements, unsupported information, technology omissions, cross-job contamination, incorrect task attribution, and critical errors. Candidate labels are opaque and do not identify models or request grouping."""
+_EVALUATION_PROMPT_PATH = Path(__file__).resolve().parent.parent / "prompts" / "evaluation_prompt.txt"
+EVALUATION_PROMPT = _EVALUATION_PROMPT_PATH.read_text(encoding="utf-8")
 
 
 def _body(model: str, system: str, user_value: Any, schema: dict[str, Any], reasoning: str | None = None) -> dict[str, Any]:
@@ -20,19 +22,33 @@ def _body(model: str, system: str, user_value: Any, schema: dict[str, Any], reas
 
 def extraction_body(model: str, jobs: dict[str, str] | list[dict[str, str]], schema: dict[str, Any] = BATCH_EXTRACTION_SCHEMA, reasoning: str | None = None) -> dict[str, Any]:
     if isinstance(jobs, dict): jobs = [jobs]
-    payload = {"jobs": jobs}
-    # The prompt explicitly reserves this placeholder for the request payload.
-    system_prompt = SYSTEM_PROMPT.replace("{{INPUT_JOBS_JSON}}", json.dumps(payload, ensure_ascii=False))
-    return _body(model, system_prompt, payload, schema, reasoning)
+    payload = {"jobs": [{"job_id": job["job_id"], "description": job["description"]} for job in jobs]}
+    return _body(model, SYSTEM_PROMPT, payload, schema, reasoning)
 
 
-def evaluation_body(model: str, job: dict[str, str], candidates: list[Any] | tuple[Any, ...], schema: dict[str, Any] = EVALUATION_SCHEMA, reasoning: str | None = None) -> dict[str, Any]:
-    return _body(model, EVALUATION_PROMPT, {"job": job, "candidates": list(candidates)}, schema, reasoning)
+def evaluation_body(model: str, original_job: dict[str, str], candidates: list[dict[str, Any]], schema: dict[str, Any] | None = None, reasoning: str | None = None) -> dict[str, Any]:
+    if len(candidates) < 2 or len(candidates) > 4:
+        raise ValueError(f"Evaluation requires between two and four candidates, got {len(candidates)}")
+    expected_job_id = str(original_job["job_id"])
+    if any(str(candidate["normalized_result"].get("job_id")) != expected_job_id for candidate in candidates):
+        raise ValueError(f"Candidate job_id does not match original job_id {expected_job_id}")
+    payload = {
+        "original_job": {
+            "job_id": expected_job_id,
+            "description": original_job["description"],
+        },
+        "candidates": candidates,
+    }
+    evaluation_schema = schema or build_evaluation_schema([candidate["candidate_id"] for candidate in candidates])
+    return _body(model, EVALUATION_PROMPT, payload, evaluation_schema, reasoning)
 
 
 def client():
     from openai import OpenAI
-    return OpenAI()
+    api_key = os.environ.get("OPENAI_API_KEY")
+    if not api_key:
+        raise RuntimeError("OPENAI_API_KEY environment variable is not set")
+    return OpenAI(api_key=api_key)
 
 
 def verify_models(models: dict[str, str]) -> None:
@@ -49,8 +65,10 @@ def write_requests(path: Path, requests: dict[str, dict[str, Any]]) -> None:
 
 
 def submit(path: Path, metadata: dict[str, str], completion_window: str) -> dict[str, Any]:
+    if path.suffix.lower() != ".jsonl":
+        raise ValueError(f"Batch input file must use the .jsonl extension: {path}")
     api = client()
-    with path.open("rb") as stream: file = api.files.create(file=stream, purpose="batch")
+    file = api.files.create(file=path, purpose="batch")
     batch = api.batches.create(input_file_id=file.id, endpoint="/v1/responses", completion_window=completion_window, metadata=metadata)
     return {"batch_id": batch.id, "input_file_id": file.id, "status": batch.status, "created_at": time.time()}
 

@@ -10,9 +10,9 @@ from typing import Any
 from .config import db_environment
 
 
-def load_jobs(sample_size: int, seed: int) -> list[dict[str, str]]:
+def load_jobs(sample_size: int, seed: int, config: dict[str, Any]) -> list[dict[str, str]]:
     import psycopg
-    with psycopg.connect(**db_environment(), autocommit=False) as connection:
+    with psycopg.connect(**db_environment(config), autocommit=False) as connection:
         with connection.cursor() as cursor:
             cursor.execute("SET TRANSACTION READ ONLY")
             cursor.execute("SELECT id, title, description FROM jobs WHERE title IS NOT NULL AND description IS NOT NULL")

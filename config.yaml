@@ -1,34 +1,41 @@
+database:
+  host: localhost
+  port: 5432
+  name: upwork
+  user: upwork_app
+  password: upwork12345app
+
 experiment:
   name: job-normalization-benchmark
-  sample_size: 200
+  sample_size: 1
   sampling_method: random
   random_seed: 42
 
 models:
-  extractor_a: "${EXTRACTOR_A_MODEL}"
-  extractor_b: "${EXTRACTOR_B_MODEL}"
-  evaluator: "${EVALUATOR_MODEL}"
+  extractor_a: gpt-5.6-luna
+  extractor_b: gpt-6-luna
+  evaluator: gpt-5.6-sol
 
 variants:
   v1:
-    model: "${EXTRACTOR_A_MODEL}"
+    model: gpt-5.6-luna
     jobs_per_request: 1
   v2:
-    model: "${EXTRACTOR_A_MODEL}"
+    model: gpt-5.6-luna
     jobs_per_request: 100
   v3:
-    model: "${EXTRACTOR_B_MODEL}"
+    model: gpt-6-luna
     jobs_per_request: 1
   v4:
-    model: "${EXTRACTOR_B_MODEL}"
+    model: gpt-6-luna
     jobs_per_request: 100
 
 processing:
   mode: batch_api
-  requests_per_file: 50
+  requests_per_file: 100
   max_retries: 3
   completion_window: 24h
-  reasoning_effort: null
+  reasoning_effort: low
   poll_interval_seconds: 30
 
 evaluation:

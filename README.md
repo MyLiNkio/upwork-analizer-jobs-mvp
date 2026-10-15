@@ -8,10 +8,7 @@ Benchmark extraction and normalization of Upwork jobs with two OpenAI models and
 python -m venv .venv
 python -m pip install -e .
 export OPENAI_API_KEY=...
-export EXTRACTOR_A_MODEL=verified-model-id
-export EXTRACTOR_B_MODEL=verified-model-id
-export EVALUATOR_MODEL=verified-model-id
-export DB_HOST=localhost DB_PORT=5432 DB_NAME=upwork DB_USER=upwork_app DB_PASSWORD=...
+# Model IDs and PostgreSQL connection are configured in config.yaml
 ```
 
 Model IDs are deliberately supplied through environment variables. `prepare` verifies their availability before creating a run.

@@ -19,11 +19,12 @@ def _expand(value: Any) -> Any:
 def load_config(path: str | Path = "config.yaml") -> dict[str, Any]:
     with Path(path).open(encoding="utf-8") as stream:
         config = _expand(yaml.safe_load(stream) or {})
+    # Model IDs are fixed by the experiment; only OPENAI_API_KEY is read from
+    # the environment (the OpenAI SDK reads it automatically).
     models = config.setdefault("models", {})
-    variants = config.get("variants", {})
-    models.setdefault("extractor_a", variants.get("v1", {}).get("model"))
-    models.setdefault("extractor_b", variants.get("v3", {}).get("model"))
-    models.setdefault("evaluator", config.get("evaluation", {}).get("model"))
+    models["extractor_a"] = "gpt-5.6-luna"
+    models["extractor_b"] = "gpt-6-luna"
+    models["evaluator"] = "gpt-5.6-sol"
     required = ("extractor_a", "extractor_b", "evaluator")
     missing = [name for name in required if not models.get(name) or str(models[name]).startswith("${")]
     if missing:
@@ -39,10 +40,12 @@ def load_config(path: str | Path = "config.yaml") -> dict[str, Any]:
     return config
 
 
-def db_environment() -> dict[str, Any]:
-    keys = {"host": "DB_HOST", "port": "DB_PORT", "database": "DB_NAME", "user": "DB_USER", "password": "DB_PASSWORD"}
-    result = {field: os.environ.get(variable) for field, variable in keys.items()}
-    result["port"] = int(result["port"] or 5432)
-    missing = [key for key, value in result.items() if value in (None, "")]
-    if missing: raise ValueError(f"Missing database environment variables: {', '.join(missing)}")
-    return result
+def db_environment(config: dict[str, Any] | None = None) -> dict[str, Any]:
+    """Return read-only database connection settings from config.yaml."""
+    if not config or not config.get("database"):
+        raise ValueError("Database settings are required under the database section of config.yaml")
+    database = config["database"]
+    required = ("host", "port", "name", "user", "password")
+    missing = [key for key in required if database.get(key) in (None, "")]
+    if missing: raise ValueError(f"Missing database configuration: {', '.join(missing)}")
+    return {"host": database["host"], "port": int(database["port"]), "dbname": database["name"], "user": database["user"], "password": database["password"]}

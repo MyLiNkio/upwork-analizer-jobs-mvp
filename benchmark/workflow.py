@@ -17,7 +17,7 @@ def run_dir(config: dict[str, Any], run_id: str) -> Path: return Path(config["st
 def prepare(config: dict[str, Any], config_path: str = "config.yaml") -> str:
     verify_models(config["models"]); run_id = f"run_{uuid.uuid4().hex[:12]}"; directory = run_dir(config, run_id); directory.mkdir(parents=True)
     (directory / "config.snapshot.yaml").write_text(Path(config_path).read_text(encoding="utf-8"), encoding="utf-8")
-    write_dataset(directory, load_jobs(int(config["experiment"]["sample_size"]), int(config["experiment"]["random_seed"])), config)
+    write_dataset(directory, load_jobs(int(config["experiment"]["sample_size"]), int(config["experiment"]["random_seed"]), config), config)
     prompt_source = Path(__file__).resolve().parent.parent / "prompts" / "system_prompt.txt"
     (directory / "prompts").mkdir(); (directory / "prompts/system_prompt.txt").write_text(prompt_source.read_text(encoding="utf-8"), encoding="utf-8")
     return run_id

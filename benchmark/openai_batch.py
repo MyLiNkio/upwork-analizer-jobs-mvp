@@ -7,7 +7,8 @@ from typing import Any
 
 from .schema import BATCH_EXTRACTION_SCHEMA, EVALUATION_SCHEMA
 
-SYSTEM_PROMPT = """Analyze each Upwork job independently. Extract only functionality explicitly requested in that job. Never transfer technologies, tasks, business problems, or facts between jobs. Return one result with the unchanged job_id for every input job, including an empty tasks array when appropriate. Preserve exact quotations in original_fragments; they must occur verbatim in that job's title or description. Normalize faithfully without inventing facts, preserve technologies and integrations, and keep independent tasks separate. Exclude hiring, company, communication, rate, schedule, generic candidate requirements, skills, taxonomies, and prior AI classifications unless they state a technical constraint of the solution."""
+_PROMPT_PATH = Path(__file__).resolve().parent.parent / "prompts" / "system_prompt.txt"
+SYSTEM_PROMPT = _PROMPT_PATH.read_text(encoding="utf-8")
 EVALUATION_PROMPT = """You are an independent blind evaluator. Compare four candidate outputs only against the original Upwork job. Score each candidate independently for functional completeness (30%), absence of hallucinations (20%), technology and integration preservation (20%), verbatim extraction accuracy (15%), normalization quality (10%), and multi-task extraction quality (5%). Identify missing requirements, unsupported information, technology omissions, cross-job contamination, incorrect task attribution, and critical errors. Candidate labels are opaque and do not identify models or request grouping."""
 
 
@@ -19,7 +20,10 @@ def _body(model: str, system: str, user_value: Any, schema: dict[str, Any], reas
 
 def extraction_body(model: str, jobs: dict[str, str] | list[dict[str, str]], schema: dict[str, Any] = BATCH_EXTRACTION_SCHEMA, reasoning: str | None = None) -> dict[str, Any]:
     if isinstance(jobs, dict): jobs = [jobs]
-    return _body(model, SYSTEM_PROMPT, {"jobs": jobs}, schema, reasoning)
+    payload = {"jobs": jobs}
+    # The prompt explicitly reserves this placeholder for the request payload.
+    system_prompt = SYSTEM_PROMPT.replace("{{INPUT_JOBS_JSON}}", json.dumps(payload, ensure_ascii=False))
+    return _body(model, system_prompt, payload, schema, reasoning)
 
 
 def evaluation_body(model: str, job: dict[str, str], candidates: list[Any] | tuple[Any, ...], schema: dict[str, Any] = EVALUATION_SCHEMA, reasoning: str | None = None) -> dict[str, Any]:

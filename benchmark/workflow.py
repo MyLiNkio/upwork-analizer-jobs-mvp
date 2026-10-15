@@ -18,7 +18,8 @@ def prepare(config: dict[str, Any], config_path: str = "config.yaml") -> str:
     verify_models(config["models"]); run_id = f"run_{uuid.uuid4().hex[:12]}"; directory = run_dir(config, run_id); directory.mkdir(parents=True)
     (directory / "config.snapshot.yaml").write_text(Path(config_path).read_text(encoding="utf-8"), encoding="utf-8")
     write_dataset(directory, load_jobs(int(config["experiment"]["sample_size"]), int(config["experiment"]["random_seed"])), config)
-    (directory / "prompts").mkdir(); (directory / "prompts/extraction.txt").write_text("Shared extraction prompt is versioned in benchmark/openai_batch.py.\n", encoding="utf-8")
+    prompt_source = Path(__file__).resolve().parent.parent / "prompts" / "system_prompt.txt"
+    (directory / "prompts").mkdir(); (directory / "prompts/system_prompt.txt").write_text(prompt_source.read_text(encoding="utf-8"), encoding="utf-8")
     return run_id
 
 

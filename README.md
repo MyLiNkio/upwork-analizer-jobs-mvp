@@ -20,11 +20,13 @@ Model IDs are deliberately supplied through environment variables. `prepare` ver
 
 ```bash
 python -m benchmark prepare
-python -m benchmark extract --run-id RUN_ID --model all --mode submit
-python -m benchmark extract --run-id RUN_ID --model all --mode sync
+python -m benchmark extract --run-id RUN_ID --variant all --mode submit
+python -m benchmark extract --run-id RUN_ID --variant all --mode sync
+python -m benchmark extract --run-id RUN_ID --variant v2 --mode submit
 python -m benchmark evaluate --run-id RUN_ID
 python -m benchmark report --run-id RUN_ID
 python -m benchmark status --run-id RUN_ID
+python -m benchmark resume --run-id RUN_ID
 python -m benchmark run-all
 ```
 
